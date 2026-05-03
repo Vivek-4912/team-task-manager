@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Signup - Team Task Manager</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<div class="auth-wrapper">
+    <div class="auth-left">
+        <div class="auth-brand">🗂️ Team<span>Task</span></div>
+        <p class="auth-tagline">Join thousands of teams who use TeamTask to manage their projects and deliver work on time.</p>
+        <div class="auth-features">
+            <div class="auth-feature">
+                <div class="auth-feature-icon">✅</div>
+                <span>Create and manage tasks with priorities</span>
+            </div>
+            <div class="auth-feature">
+                <div class="auth-feature-icon">🔔</div>
+                <span>Track overdue tasks and deadlines easily</span>
+            </div>
+            <div class="auth-feature">
+                <div class="auth-feature-icon">🔒</div>
+                <span>Secure login with JWT authentication</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="auth-right">
+        <div class="auth-box">
+            <h2>Create account ✨</h2>
+            <p>Sign up to start managing your team tasks</p>
+
+            <div class="error-msg" id="errorMsg"></div>
+
+            <div class="form-group">
+                <label>Full Name</label>
+                <input type="text" id="name" placeholder="Your full name" />
+            </div>
+
+            <div class="form-group">
+                <label>Email Address</label>
+                <input type="email" id="email" placeholder="you@example.com" />
+            </div>
+
+            <div class="form-group">
+                <label>Password</label>
+                <input type="password" id="password" placeholder="Minimum 6 characters" />
+            </div>
+
+            <button class="btn-primary" onclick="signup()">Create Account →</button>
+
+            <div class="auth-link">
+                Already have an account? <a href="/">Login</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    async function signup(){
+        const name = document.getElementById('name').value.trim();
+        const email = document.getElementById('email').value.trim();
+        const password = document.getElementById('password').value;
+        const errorMsg = document.getElementById('errorMsg');
+
+        errorMsg.classList.remove('show');
+
+        if(!name || !email || !password){
+            errorMsg.innerText = 'All fields are required';
+            errorMsg.classList.add('show');
+            return;
+        }
+
+        if(name.length < 2){
+            errorMsg.innerText = 'Name must be at least 2 characters';
+            errorMsg.classList.add('show');
+            return;
+        }
+
+        if(password.length < 6){
+            errorMsg.innerText = 'Password must be at least 6 characters';
+            errorMsg.classList.add('show');
+            return;
+        }
+
+        try {
+            const response = await fetch('/auth/signup', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, email, password })
+            });
+
+            const data = await response.json();
+
+            if(response.ok){
+                alert('Account created successfully! Please login.');
+                window.location.href = '/';
+            } else {
+                errorMsg.innerText = data.message;
+                errorMsg.classList.add('show');
+            }
+        } catch(err) {
+            errorMsg.innerText = 'Cannot connect to server. Please try again.';
+            errorMsg.classList.add('show');
+        }
+    }
+
+    document.addEventListener('keydown', function(e){
+        if(e.key === 'Enter') signup();
+    });
+</script>
+
+</body>
+</html>

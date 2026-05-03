@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Team Task Manager</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<div class="navbar">
+    <h1>🗂️ Team<span>Task</span></h1>
+    <div class="navbar-right">
+        <span class="navbar-user">Hi, <span id="userName"></span></span>
+        <button class="btn-logout" onclick="logout()">Logout</button>
+    </div>
+</div>
+
+<div class="container">
+
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-icon">📋</div>
+            <div class="stat-number" id="totalTasks">0</div>
+            <div class="stat-label">Total Tasks</div>
+        </div>
+        <div class="stat-card warning">
+            <div class="stat-icon">📝</div>
+            <div class="stat-number" id="todoTasks">0</div>
+            <div class="stat-label">To Do</div>
+        </div>
+        <div class="stat-card success">
+            <div class="stat-icon">✅</div>
+            <div class="stat-number" id="doneTasks">0</div>
+            <div class="stat-label">Completed</div>
+        </div>
+        <div class="stat-card danger">
+            <div class="stat-icon">⚠️</div>
+            <div class="stat-number" id="overdueTasks">0</div>
+            <div class="stat-label">Overdue</div>
+        </div>
+    </div>
+
+    <div class="section-header">
+        <h2 class="section-title">My Projects</h2>
+        <button class="btn btn-purple" onclick="openProjectModal()">+ New Project</button>
+    </div>
+
+    <div class="projects-grid" id="projectsGrid">
+        <div class="empty-state">
+            <div class="empty-icon">📂</div>
+            <p>Loading projects...</p>
+        </div>
+    </div>
+
+</div>
+
+<div class="modal" id="projectModal">
+    <div class="modal-box">
+        <h3 class="modal-title">Create New Project</h3>
+        <div class="error-msg" id="projectError"></div>
+        <input type="text" id="projectName" placeholder="Project Name" />
+        <textarea id="projectDesc" placeholder="Project Description (optional)"></textarea>
+        <div class="modal-footer">
+            <button class="btn btn-red" onclick="closeProjectModal()">Cancel</button>
+            <button class="btn btn-purple" onclick="createProject()">Create Project</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const token = localStorage.getItem('token');
+    const user = JSON.parse(localStorage.getItem('user'));
+
+    if(!token || !user){
+        window.location.href = '/';
+    }
+
+    document.getElementById('userName').innerText = user.name;
+
+    async function loadDashboard(){
+        try {
+            const response = await fetch('/projects', {
+                headers: { 'Authorization': 'Bearer ' + token }
+            });
+
+            if(response.status === 401){
+                logout();
+                return;
+            }
+
+            const projects = await response.json();
+            const grid = document.getElementById('projectsGrid');
+            grid.innerHTML = '';
+
+            if(projects.length === 0){
+                grid.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-icon">📂</div>
+                        <p>No projects yet. Create your first project!</p>
+                    </div>`;
+                return;
+            }
+
+            let totalTasks = 0, todoTasks = 0, doneTasks = 0, overdueTasks = 0;
+
+            for(let project of projects){
+                const dashRes = await fetch(`/projects/${project.id}/dashboard`, {
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
+                const dash = await dashRes.json();
+
+                totalTasks += dash.total_tasks;
+                todoTasks += dash.by_status['To Do'];
+                doneTasks += dash.by_status['Done'];
+                overdueTasks += dash.overdue_tasks;
+
+                const card = document.createElement('div');
+                card.className = 'project-card';
+                card.innerHTML = `
+                    <div class="project-card-top">
+                        <div class="project-avatar">📁</div>
+                        <span class="role-badge ${project.role === 'Admin' ? 'admin' : 'member'}">${project.role}</span>
+                    </div>
+                    <div class="project-name">${project.name}</div>
+                    <div class="project-desc">${project.description || 'No description added'}</div>
+                    <div class="project-meta">
+                        <span>📋 ${dash.total_tasks} Tasks</span>
+                        <span>✅ ${dash.by_status['Done']} Done</span>
+                        <span>⚠️ ${dash.overdue_tasks} Overdue</span>
+                    </div>
+                `;
+                card.onclick = () => {
+                    localStorage.setItem('currentProject', JSON.stringify(project));
+                    window.location.href = '/project';
+                };
+                grid.appendChild(card);
+            }
+
+            document.getElementById('totalTasks').innerText = totalTasks;
+            document.getElementById('todoTasks').innerText = todoTasks;
+            document.getElementById('doneTasks').innerText = doneTasks;
+            document.getElementById('overdueTasks').innerText = overdueTasks;
+
+        } catch(err) {
+            console.error('Error:', err);
+        }
+    }
+
+    function openProjectModal(){
+        document.getElementById('projectModal').classList.add('open');
+    }
+
+    function closeProjectModal(){
+        document.getElementById('projectModal').classList.remove('open');
+        document.getElementById('projectName').value = '';
+        document.getElementById('projectDesc').value = '';
+    }
+
+    async function createProject(){
+        const name = document.getElementById('projectName').value.trim();
+        const description = document.getElementById('projectDesc').value.trim();
+        const errorMsg = document.getElementById('projectError');
+
+        errorMsg.classList.remove('show');
+
+        if(!name){
+            errorMsg.innerText = 'Project name is required';
+            errorMsg.classList.add('show');
+            return;
+        }
+
+        try {
+            const response = await fetch('/projects', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + token
+                },
+                body: JSON.stringify({ name, description })
+            });
+
+            const data = await response.json();
+
+            if(response.ok){
+                closeProjectModal();
+                loadDashboard();
+            } else {
+                errorMsg.innerText = data.message;
+                errorMsg.classList.add('show');
+            }
+        } catch(err) {
+            errorMsg.innerText = 'Server error. Please try again.';
+            errorMsg.classList.add('show');
+        }
+    }
+
+    function logout(){
+        localStorage.clear();
+        window.location.href = '/';
+    }
+
+    loadDashboard();
+</script>
+
+</body>
+</html>

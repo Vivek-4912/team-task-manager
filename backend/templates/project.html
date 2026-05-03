@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project - Team Task Manager</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<div class="navbar">
+    <h1>🗂️ Team<span>Task</span></h1>
+    <div class="navbar-right">
+        <button class="btn btn-outline btn-sm" onclick="window.location.href='/dashboard'">← Dashboard</button>
+        <button class="btn-logout" onclick="logout()">Logout</button>
+    </div>
+</div>
+
+<div class="page-header">
+    <div>
+        <h2 id="projectTitle">Project</h2>
+        <p id="projectRole"></p>
+    </div>
+</div>
+
+<div class="container">
+
+    <div id="adminControls" style="display:none;">
+        <div class="section-header">
+            <h2 class="section-title">👥 Team Members</h2>
+            <button class="btn btn-purple" onclick="openMemberModal()">+ Add Member</button>
+        </div>
+        <div class="members-list" id="membersList"></div>
+        <div class="section-header">
+            <h2 class="section-title">📋 Tasks</h2>
+            <button class="btn btn-purple" onclick="openTaskModal()">+ Add Task</button>
+        </div>
+    </div>
+
+    <div id="memberControls" style="display:none;">
+        <div class="section-header">
+            <h2 class="section-title">📋 My Assigned Tasks</h2>
+        </div>
+    </div>
+
+    <div class="task-board">
+        <div class="task-column">
+            <div class="column-header">
+                <div class="column-title">
+                    <span class="column-dot dot-todo"></span> To Do
+                </div>
+                <span class="column-count" id="todoCount">0</span>
+            </div>
+            <div id="todoColumn"></div>
+        </div>
+        <div class="task-column">
+            <div class="column-header">
+                <div class="column-title">
+                    <span class="column-dot dot-progress"></span> In Progress
+                </div>
+                <span class="column-count" id="progressCount">0</span>
+            </div>
+            <div id="inProgressColumn"></div>
+        </div>
+        <div class="task-column">
+            <div class="column-header">
+                <div class="column-title">
+                    <span class="column-dot dot-done"></span> Done
+                </div>
+                <span class="column-count" id="doneCount">0</span>
+            </div>
+            <div id="doneColumn"></div>
+        </div>
+    </div>
+
+</div>
+
+<!-- Add Member Modal -->
+<div class="modal" id="memberModal">
+    <div class="modal-box">
+        <h3 class="modal-title">Add Team Member</h3>
+        <div class="error-msg" id="memberError"></div>
+        <input type="email" id="memberEmail" placeholder="Member's email address" />
+        <div class="modal-footer">
+            <button class="btn btn-red" onclick="closeMemberModal()">Cancel</button>
+            <button class="btn btn-purple" onclick="addMember()">Add Member</button>
+        </div>
+    </div>
+</div>
+
+<!-- Add Task Modal -->
+<div class="modal" id="taskModal">
+    <div class="modal-box">
+        <h3 class="modal-title">Create New Task</h3>
+        <div class="error-msg" id="taskError"></div>
+        <input type="text" id="taskTitle" placeholder="Task Title" />
+        <textarea id="taskDesc" placeholder="Task Description (optional)"></textarea>
+        <input type="date" id="taskDueDate" />
+        <select id="taskPriority">
+            <option value="Low">🟢 Low Priority</option>
+            <option value="Medium" selected>🟡 Medium Priority</option>
+            <option value="High">🔴 High Priority</option>
+        </select>
+        <select id="taskAssignee">
+            <option value="">Assign to a member...</option>
+        </select>
+        <div class="modal-footer">
+            <button class="btn btn-red" onclick="closeTaskModal()">Cancel</button>
+            <button class="btn btn-purple" onclick="createTask()">Create Task</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const token = localStorage.getItem('token');
+    const user = JSON.parse(localStorage.getItem('user'));
+    const project = JSON.parse(localStorage.getItem('currentProject'));
+
+    if(!token || !project){ window.location.href = '/dashboard'; }
+
+    document.getElementById('projectTitle').innerText = project.name;
+    document.getElementById('projectRole').innerText = 'Your role: ' + project.role;
+
+    let members = [];
+
+    async function loadProject(){
+        if(project.role === 'Admin'){
+            document.getElementById('adminControls').style.display = 'block';
+        } else {
+            document.getElementById('memberControls').style.display = 'block';
+        }
+        await loadMembers();
+        await loadTasks();
+    }
+
+    async function loadMembers(){
+        const res = await fetch(`/projects/${project.id}/members`, {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+        members = await res.json();
+
+        const list = document.getElementById('membersList');
+        if(list){
+            list.innerHTML = '';
+            members.forEach(m => {
+                const initials = m.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0,2);
+                const row = document.createElement('div');
+                row.className = 'member-row';
+                row.innerHTML = `
+                    <div class="member-info">
+                        <div class="member-avatar">${initials}</div>
+                        <div>
+                            <div class="member-name">${m.name}</div>
+                            <div class="member-email">${m.email}</div>
+                        </div>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:12px;">
+                        <span class="role-badge ${m.role === 'Admin' ? 'admin' : 'member'}">${m.role}</span>
+                        ${project.role === 'Admin' && m.user_id !== user.id
+                            ? `<button class="btn btn-red btn-sm" onclick="removeMember(${m.user_id})">Remove</button>`
+                            : ''}
+                    </div>
+                `;
+                list.appendChild(row);
+            });
+        }
+
+        const assignee = document.getElementById('taskAssignee');
+        assignee.innerHTML = '<option value="">Assign to a member...</option>';
+        members.forEach(m => {
+            assignee.innerHTML += `<option value="${m.user_id}">${m.name}</option>`;
+        });
+    }
+
+    async function loadTasks(){
+        const res = await fetch(`/projects/${project.id}/tasks`, {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+        const tasks = await res.json();
+
+        const todoCol = document.getElementById('todoColumn');
+        const progressCol = document.getElementById('inProgressColumn');
+        const doneCol = document.getElementById('doneColumn');
+
+        todoCol.innerHTML = '';
+        progressCol.innerHTML = '';
+        doneCol.innerHTML = '';
+
+        let todoCnt = 0, progressCnt = 0, doneCnt = 0;
+
+        tasks.forEach(task => {
+            const assignedUser = members.find(m => m.user_id === task.assigned_to);
+            const priorityClass = task.priority.toLowerCase();
+
+            const card = document.createElement('div');
+            card.className = `task-card ${priorityClass}`;
+            card.innerHTML = `
+                <div class="task-title">${task.title}</div>
+                ${task.description ? `<div class="task-desc">${task.description}</div>` : ''}
+                <div class="task-meta">
+                    <span class="task-tag tag-${priorityClass}">🔥 ${task.priority}</span>
+                    ${assignedUser ? `<span class="task-tag tag-user">👤 ${assignedUser.name}</span>` : ''}
+                    ${task.due_date ? `<span class="task-tag tag-date">📅 ${task.due_date}</span>` : ''}
+                    ${task.overdue ? `<span class="task-tag tag-overdue">⚠️ Overdue</span>` : ''}
+                </div>
+                <select class="task-status-select" onchange="updateStatus(${task.id}, this.value)">
+                    <option ${task.status === 'To Do' ? 'selected' : ''}>To Do</option>
+                    <option ${task.status === 'In Progress' ? 'selected' : ''}>In Progress</option>
+                    <option ${task.status === 'Done' ? 'selected' : ''}>Done</option>
+                </select>
+            `;
+
+            if(task.status === 'To Do'){ todoCol.appendChild(card); todoCnt++; }
+            else if(task.status === 'In Progress'){ progressCol.appendChild(card); progressCnt++; }
+            else { doneCol.appendChild(card); doneCnt++; }
+        });
+
+        document.getElementById('todoCount').innerText = todoCnt;
+        document.getElementById('progressCount').innerText = progressCnt;
+        document.getElementById('doneCount').innerText = doneCnt;
+    }
+
+    function openMemberModal(){ document.getElementById('memberModal').classList.add('open'); }
+    function closeMemberModal(){ document.getElementById('memberModal').classList.remove('open'); document.getElementById('memberEmail').value = ''; }
+
+    async function addMember(){
+        const email = document.getElementById('memberEmail').value.trim();
+        const err = document.getElementById('memberError');
+        err.classList.remove('show');
+        if(!email){ err.innerText = 'Email is required'; err.classList.add('show'); return; }
+
+        const res = await fetch(`/projects/${project.id}/members`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+            body: JSON.stringify({ email })
+        });
+        const data = await res.json();
+        if(res.ok){ closeMemberModal(); loadMembers(); }
+        else { err.innerText = data.message; err.classList.add('show'); }
+    }
+
+    async function removeMember(memberId){
+        if(!confirm('Remove this member?')) return;
+        const res = await fetch(`/projects/${project.id}/members/${memberId}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+        if(res.ok) loadMembers();
+    }
+
+    function openTaskModal(){ document.getElementById('taskModal').classList.add('open'); }
+    function closeTaskModal(){ document.getElementById('taskModal').classList.remove('open'); }
+
+    async function createTask(){
+        const title = document.getElementById('taskTitle').value.trim();
+        const description = document.getElementById('taskDesc').value.trim();
+        const due_date = document.getElementById('taskDueDate').value;
+        const priority = document.getElementById('taskPriority').value;
+        const assigned_to = document.getElementById('taskAssignee').value;
+        const err = document.getElementById('taskError');
+        err.classList.remove('show');
+
+        if(!title){ err.innerText = 'Task title is required'; err.classList.add('show'); return; }
+
+        const res = await fetch(`/projects/${project.id}/tasks`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+            body: JSON.stringify({ title, description, due_date, priority, assigned_to: assigned_to ? parseInt(assigned_to) : null })
+        });
+        const data = await res.json();
+        if(res.ok){ closeTaskModal(); loadTasks(); }
+        else { err.innerText = data.message; err.classList.add('show'); }
+    }
+
+    async function updateStatus(taskId, status){
+        await fetch(`/tasks/${taskId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+            body: JSON.stringify({ status })
+        });
+        loadTasks();
+    }
+
+    function logout(){ localStorage.clear(); window.location.href = '/'; }
+
+    loadProject();
+</script>
+
+</body>
+</html>
